@@ -9,9 +9,9 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 <script>
 	function generateColors() {
-	  const colorContainer: HTMLBodyElement = document.body;
+	  const colorContainer: HTMLElement = document.body;
 	  let i: number = 0, j: number = 0, k: number = 0;
-	
+
 	  function generateColor() {
 	    const hexColor: string = rgbToHex(i, j, k);
 	    const colorBox: HTMLDivElement = document.createElement('div');
@@ -20,7 +20,7 @@ import Layout from '../layouts/Layout.astro';
 	    colorBox.innerText = hexColor;
 	    colorBox.addEventListener('click', () => copyToClipboard(hexColor));
 	    colorContainer.appendChild(colorBox);
-		
+
 	    k++;
 	    if (k > 255) {
 	      k = 0;
@@ -34,10 +34,10 @@ import Layout from '../layouts/Layout.astro';
 	      setTimeout(generateColor, 0); // Adjust the delay as needed
 	    }
 	  }
-	
+
 	  generateColor();
 	}
-	
+
 	function rgbToHex(r: number, g: number, b: number): string {
 	  const toHex = (c: number): string => {
 	    const hex: string = c.toString(16);
@@ -45,15 +45,15 @@ import Layout from '../layouts/Layout.astro';
 	  };
 	  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 	}
-	
-	function copyToClipboard(text: string): void {
-	  const textarea: HTMLTextAreaElement = document.createElement('textarea');
-	  textarea.value = text;
-	  document.body.appendChild(textarea);
-	  textarea.select();
-	  document.execCommand('copy');
-	  document.body.removeChild(textarea);
-	}
-	
+
+	async function copyToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    console.log('Text copied to clipboard');
+  } catch (err) {
+    console.error('Unable to copy text to clipboard', err);
+  }
+}
+
 	generateColors();
 </script>
