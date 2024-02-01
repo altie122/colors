@@ -1,0 +1,59 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Welcome to Astro.">
+	<main>
+		
+	</main>
+</Layout>
+<script>
+	function generateColors() {
+			const colorContainer = document.body;
+			let i = 0, j = 0, k = 0;
+
+			function generateColor() {
+					const hexColor = rgbToHex(i, j, k);
+					const colorBox = document.createElement('div');
+					colorBox.className = 'color-box';
+					colorBox.style.backgroundColor = hexColor;
+					colorBox.innerText = hexColor;
+					colorBox.addEventListener('click', () => copyToClipboard(hexColor));
+					colorContainer.appendChild(colorBox);
+
+					k++;
+					if (k > 255) {
+							k = 0;
+							j++;
+					}
+					if (j > 255) {
+							j = 0;
+							i++;
+					}
+					if (i <= 255) {
+							setTimeout(generateColor, 0); // Adjust the delay as needed
+					}
+			}
+
+			generateColor();
+	}
+
+	function rgbToHex(r, g, b) {
+			const toHex = (c) => {
+					const hex = c.toString(16);
+					return hex.length === 1 ? '0' + hex : hex;
+			};
+			return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+	}
+
+	function copyToClipboard(text) {
+			const textarea = document.createElement('textarea');
+			textarea.value = text;
+			document.body.appendChild(textarea);
+			textarea.select();
+			document.execCommand('copy');
+			document.body.removeChild(textarea);
+	}
+
+	generateColors();
+</script>
