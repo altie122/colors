@@ -4,7 +4,6 @@ import Layout from '../layouts/Layout.astro';
 
 <Layout title="Welcome to Astro.">
 	<main>
-		<div class="info">Last Color Generated: <span id="lcg"></span> | Number of Colors Generated: <span id="ncg"></span></div>
 	</main>
 </Layout>
 <script>
@@ -15,8 +14,9 @@ import Layout from '../layouts/Layout.astro';
 			id++;
 	    const hexColor: string = rgbToHex(i, j, k);
 	    const colorBox: HTMLDivElement = document.createElement('div');
-			const lcg: HTMLElement | HTMLSpanElement = document.getElementById("lcg");
-			const ncg: HTMLElement | HTMLSpanElement = document.getElementById("ncg");
+			const lcg: HTMLElement | HTMLSpanElement = document.getElementById("lcg")!;
+			const ncg: HTMLElement | HTMLSpanElement = document.getElementById("ncg")!;
+
 	    colorBox.className = 'color-box';
 	    colorBox.style.backgroundColor = hexColor;
 	    colorBox.innerText = hexColor;
