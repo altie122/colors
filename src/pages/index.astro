@@ -4,20 +4,25 @@ import Layout from '../layouts/Layout.astro';
 
 <Layout title="Welcome to Astro.">
 	<main>
-		
+
 	</main>
 </Layout>
 <script>
 	function generateColors() {
 	  const colorContainer: HTMLElement = document.body;
-	  let i: number = 0, j: number = 0, k: number = 0;
-
+	  let i: number = 0, j: number = 0, k: number = 0, id: number = 0;
 	  function generateColor() {
+			id++;
 	    const hexColor: string = rgbToHex(i, j, k);
 	    const colorBox: HTMLDivElement = document.createElement('div');
+			const lcg: HTMLElement | null = document.getElementById("lcg");
+			const ncg: HTMLElement | null = document.getElementById("ncg");
 	    colorBox.className = 'color-box';
 	    colorBox.style.backgroundColor = hexColor;
 	    colorBox.innerText = hexColor;
+			colorBox.id = String(id);
+			lcg.innerText = hexColor;
+			ncg.innerText = String(id);
 	    colorBox.addEventListener('click', () => copyToClipboard(hexColor));
 	    colorContainer.appendChild(colorBox);
 

@@ -17,27 +17,37 @@ const { title } = Astro.props;
 		<title>{title}</title>
 	</head>
 	<body>
+		<div class="info">Last Color Generated: <span id="lcg"></span> | Number of Colors Generated: <span id="ncg"></span></div>
 		<slot />
 	</body>
 </html>
 <style is:global>
 	body {
-			display: flex;
-			flex-wrap: wrap;
-			justify-content: center;
-			align-items: center;
-			height: 100vh;
-			margin: 0;
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		align-items: center;
+		height: 100vh;
+		margin: 0;
 	}
-
+	.info {
+		position: sticky;
+		top: 0;
+		background-color: hsla(0, 0%, 50%, 0.5);
+		width:100%;
+		padding-left: 25%;
+		padding-right: 25%;
+	}
 	.color-box {
-			width: 80px;
-			height: 80px;
-			margin: 5px;
-			border: 1px solid #000;
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			cursor: pointer;
+		width: 80px;
+		height: 80px;
+		margin: 5px;
+		border: 1px solid #000;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		border-radius: 25px;
+		text-shadow: 0px 0px 5px #fff;
 	}
 </style>
