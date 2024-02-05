@@ -17,7 +17,6 @@ const { title } = Astro.props;
 		<title>{title}</title>
 	</head>
 	<body>
-		<div class="info">Last Color Generated: <span id="lcg"></span> | Number of Colors Generated: <span id="ncg"></span></div>
 		<slot />
 	</body>
 </html>
@@ -30,14 +29,15 @@ const { title } = Astro.props;
 		height: 100vh;
 		margin: 0;
 	}
-	.info {
-		position: sticky;
-		top: 0;
-		background-color: hsla(0, 0%, 50%, 0.5);
-		width:100%;
-		padding-left: 25%;
-		padding-right: 25%;
-	}
+	  .info {
+    position: sticky;
+    top: 0;
+    background-color: hsla(0, 0%, 50%, 0.5);
+    width: 100%;
+    padding-left: 25%;
+    padding-right: 25%;
+    z-index: 100; /* Ensure the info bar is above other content */
+  }
 	.color-box {
 		width: 80px;
 		height: 80px;
