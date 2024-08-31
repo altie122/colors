@@ -17,8 +17,9 @@ const { title } = Astro.props;
 		<title>{title}</title>
 	</head>
 	<body>
-		<div class="info">Last Color Generated: <span id="lcg"></span> | Number of Colors Generated: <span id="ncg"></span> | Number of Colors Left: <span id="ncl"></span></div>
+		<div class="info">Last Color Generated: <span id="lcg"></span> | Number of Colors Generated: <span id="ncg"></span> | Number of Colors Left: <span id="ncl"></span> | Time Left: <span id="tl"></span></div>
 		<slot />
+		<button class="skiptobutton" id="skiptobutton">Skip to bottom</button>
 	</body>
 </html>
 <style is:global>
@@ -50,5 +51,17 @@ const { title } = Astro.props;
 		cursor: pointer;
 		border-radius: 25px;
 		text-shadow: 0px 0px 5px #fff;
+	}
+
+	.skiptobutton {
+		position: fixed;
+		bottom: 20px;
+		right: 20px;
+		background-color: #fff;
+		color: #000;
+		padding: 10px 20px;
+		border-radius: 5px;
+		cursor: pointer;
+		z-index: 100;
 	}
 </style>

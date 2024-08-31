@@ -7,16 +7,28 @@ import Layout from '../layouts/Layout.astro';
 	</main>
 </Layout>
 <script>
+	let prevTime: number = Date.now() / 1000;
+	let currentTime: number = 0;
+	let shouldScrollToBottom: boolean = false;
+	let scrollonce: boolean = false;
+	function scrolloncefunc() {
+		shouldScrollToBottom = true;
+		scrollonce = true;
+	}
+	document.getElementById("skiptobutton")!.addEventListener("click", scrolloncefunc);
 	function generateColors() {
+		
 	  const colorContainer: HTMLElement = document.body;
 	  let i: number = 0, j: number = 0, k: number = 0, id: number = 0, l: number = 16581375;
 	  function generateColor() {
+			currentTime = Date.now() / 1000;
 			id++;
 	    const hexColor: string = rgbToHex(i, j, k);
 	    const colorBox: HTMLDivElement = document.createElement('div');
 			const lcg: HTMLElement | HTMLSpanElement = document.getElementById("lcg")!;
 			const ncg: HTMLElement | HTMLSpanElement = document.getElementById("ncg")!;
 			const ncl: HTMLElement | HTMLSpanElement = document.getElementById("ncl")!;
+			const tl: HTMLElement | HTMLSpanElement = document.getElementById("tl")!;
 	    colorBox.className = 'color-box';
 	    colorBox.style.backgroundColor = hexColor;
 	    colorBox.innerText = hexColor;
@@ -40,6 +52,31 @@ import Layout from '../layouts/Layout.astro';
 	    if (i <= 255) {
 	      setTimeout(generateColor, 0); // Adjust the delay as needed
 	    }
+			if (shouldScrollToBottom) {
+				window.scrollTo({
+        	top: document.body.scrollHeight,
+    		});
+				if (scrollonce) {
+					shouldScrollToBottom = false;
+					scrollonce = false;
+				}
+			}
+			// Calculate the difference in time
+			let timeDifference = currentTime - prevTime;
+
+			// Multiply the time difference by l
+			let totalSeconds = timeDifference * l;
+
+			// Calculate days, hours, minutes, and seconds
+			let days = Math.floor(totalSeconds / (24 * 3600));
+			let hours = Math.floor((totalSeconds % (24 * 3600)) / 3600);
+			let minutes = Math.floor((totalSeconds % 3600) / 60);
+			let seconds = totalSeconds % 60;
+
+			// Format the result as DD:HH:MM:SS
+			let formattedTime = `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0').split('.')[0]}`;
+			tl.innerText = formattedTime;
+			prevTime = currentTime;
 	  }
 
 	  generateColor();
