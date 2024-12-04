@@ -29,7 +29,7 @@ import Layout from '../layouts/Layout.astro';
 
     // Render the batch of colors
     const fragment = document.createDocumentFragment();
-    colors.forEach((color, id) => {
+    colors.forEach((color: string, id: any) => {
       const colorBox = document.createElement('div');
       colorBox.className = 'color-box';
       colorBox.style.backgroundColor = color;
@@ -49,7 +49,7 @@ import Layout from '../layouts/Layout.astro';
     }
 
     // Continue generating the current section or move to the next
-    if (nextIndex < getMaxIndex(type)) {
+    if (nextIndex < getMaxIndex(type)!) {
       currentIndex = nextIndex;
       worker.postMessage({ type: currentType, startIndex: currentIndex, batchSize });
     } else {
