@@ -7,97 +7,79 @@ import Layout from '../layouts/Layout.astro';
 	</main>
 </Layout>
 <script>
-	let prevTime: number = Date.now() / 1000;
-	let currentTime: number = 0;
-	let shouldScrollToBottom: boolean = false;
-	let scrollonce: boolean = false;
-	function scrolloncefunc() {
-		shouldScrollToBottom = true;
-		scrollonce = true;
-	}
-	document.getElementById("skiptobutton")!.addEventListener("click", scrolloncefunc);
-	function generateColors() {
-		
-	  const colorContainer: HTMLElement = document.body;
-	  let i: number = 0, j: number = 0, k: number = 0, id: number = 0, l: number = 16581375;
-	  function generateColor() {
-			currentTime = Date.now() / 1000;
-			id++;
-	    const hexColor: string = rgbToHex(i, j, k);
-	    const colorBox: HTMLDivElement = document.createElement('div');
-			const lcg: HTMLElement | HTMLSpanElement = document.getElementById("lcg")!;
-			const ncg: HTMLElement | HTMLSpanElement = document.getElementById("ncg")!;
-			const ncl: HTMLElement | HTMLSpanElement = document.getElementById("ncl")!;
-			const tl: HTMLElement | HTMLSpanElement = document.getElementById("tl")!;
-	    colorBox.className = 'color-box';
-	    colorBox.style.backgroundColor = hexColor;
-	    colorBox.innerText = hexColor;
-			colorBox.id = String(id);
-			lcg.innerText = hexColor;
-			ncg.innerText = String(id);
-			l = l - 1
-			ncl.innerText = String(l)
-	    colorBox.addEventListener('click', () => copyToClipboard(hexColor));
-	    colorContainer.appendChild(colorBox);
+  let shouldScrollToBottom = false;
+  let scrollonce = false;
 
-	    k++;
-	    if (k > 255) {
-	      k = 0;
-	      j++;
-	    }
-	    if (j > 255) {
-	      j = 0;
-	      i++;
-	    }
-	    if (i <= 255) {
-	      setTimeout(generateColor, 0); // Adjust the delay as needed
-	    }
-			if (shouldScrollToBottom) {
-				window.scrollTo({
-        	top: document.body.scrollHeight,
-    		});
-				if (scrollonce) {
-					shouldScrollToBottom = false;
-					scrollonce = false;
-				}
-			}
-			// Calculate the difference in time
-			let timeDifference = currentTime - prevTime;
-
-			// Multiply the time difference by l
-			let totalSeconds = timeDifference * l;
-
-			// Calculate days, hours, minutes, and seconds
-			let days = Math.floor(totalSeconds / (24 * 3600));
-			let hours = Math.floor((totalSeconds % (24 * 3600)) / 3600);
-			let minutes = Math.floor((totalSeconds % 3600) / 60);
-			let seconds = totalSeconds % 60;
-
-			// Format the result as DD:HH:MM:SS
-			let formattedTime = `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0').split('.')[0]}`;
-			tl.innerText = formattedTime;
-			prevTime = currentTime;
-	  }
-
-	  generateColor();
-	}
-
-	function rgbToHex(r: number, g: number, b: number): string {
-	  const toHex = (c: number): string => {
-	    const hex: string = c.toString(16);
-	    return hex.length === 1 ? '0' + hex : hex;
-	  };
-	  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-	}
-
-	async function copyToClipboard(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    console.log('Text copied to clipboard');
-  } catch (err) {
-    console.error('Unable to copy text to clipboard', err);
+  function scrolloncefunc() {
+    shouldScrollToBottom = true;
+    scrollonce = true;
   }
-}
 
-	generateColors();
+  document.getElementById("skiptobutton")!.addEventListener("click", scrolloncefunc);
+
+  const worker = new Worker('colorWorker.js');
+  const colorContainer = document.body;
+
+  let currentType = 'blues'; // Start with blues
+  let currentIndex = 0; // Start index for the current section
+  const batchSize = 256; // Number of colors per batch
+
+  worker.onmessage = function (event) {
+    const { colors, type, nextIndex } = event.data;
+
+    // Render the batch of colors
+    const fragment = document.createDocumentFragment();
+    colors.forEach((color, id) => {
+      const colorBox = document.createElement('div');
+      colorBox.className = 'color-box';
+      colorBox.style.backgroundColor = color;
+      colorBox.innerText = color;
+      colorBox.addEventListener('click', () => copyToClipboard(color));
+      fragment.appendChild(colorBox);
+    });
+
+    colorContainer.appendChild(fragment);
+
+    if (shouldScrollToBottom) {
+      window.scrollTo({ top: document.body.scrollHeight });
+      if (scrollonce) {
+        shouldScrollToBottom = false;
+        scrollonce = false;
+      }
+    }
+
+    // Continue generating the current section or move to the next
+    if (nextIndex < getMaxIndex(type)) {
+      currentIndex = nextIndex;
+      worker.postMessage({ type: currentType, startIndex: currentIndex, batchSize });
+    } else {
+      if (currentType === 'blues') currentType = 'greens';
+      else if (currentType === 'greens') currentType = 'reds';
+      else return; // All sections are done
+
+      currentIndex = 0;
+      worker.postMessage({ type: currentType, startIndex: currentIndex, batchSize });
+    }
+  };
+
+  function getMaxIndex(type: string) {
+    if (type === 'blues') return 256; // b = 0 to 255
+    if (type === 'greens') return 256 * 256; // g = 1 to 255, b = 0 to 255
+    if (type === 'reds') return 256 * 256 * 256; // r = 1 to 255, g = 0 to 255, b = 0 to 255
+  }
+
+  function generateColors() {
+    worker.postMessage({ type: currentType, startIndex: currentIndex, batchSize });
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      console.log('Text copied to clipboard');
+    } catch (err) {
+      console.error('Unable to copy text to clipboard', err);
+    }
+  }
+
+  generateColors();
 </script>
