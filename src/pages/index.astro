@@ -7,97 +7,94 @@ import Layout from '../layouts/Layout.astro';
 	</main>
 </Layout>
 <script>
-	let prevTime: number = Date.now() / 1000;
-	let currentTime: number = 0;
-	let shouldScrollToBottom: boolean = false;
-	let scrollonce: boolean = false;
-	function scrolloncefunc() {
+	let prevTime = performance.now() / 1000;
+	let shouldScrollToBottom = false;
+	let scrollOnce = false;
+
+	const colorContainer = document.body;
+	const lcg = document.getElementById("lcg");
+	const ncg = document.getElementById("ncg");
+	const ncl = document.getElementById("ncl");
+	const tl = document.getElementById("tl");
+
+	document.getElementById("skiptobutton")?.addEventListener("click", () => {
 		shouldScrollToBottom = true;
-		scrollonce = true;
+		scrollOnce = true;
+	});
+
+	function rgbToHex(r, g, b) {
+		return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 	}
-	document.getElementById("skiptobutton")!.addEventListener("click", scrolloncefunc);
+
+	async function copyToClipboard(text) {
+		try {
+			await navigator.clipboard.writeText(text);
+			console.log('Text copied to clipboard');
+		} catch (err) {
+			console.error('Unable to copy text to clipboard', err);
+		}
+	}
+
+	function formatTime(seconds) {
+		const days = Math.floor(seconds / 86400);
+		const hours = Math.floor((seconds % 86400) / 3600);
+		const minutes = Math.floor((seconds % 3600) / 60);
+		const secs = Math.floor(seconds % 60);
+		return `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+	}
+
 	function generateColors() {
-		
-	  const colorContainer: HTMLElement = document.body;
-	  let i: number = 0, j: number = 0, k: number = 0, id: number = 0, l: number = 16581375;
-	  function generateColor() {
-			currentTime = Date.now() / 1000;
-			id++;
-	    const hexColor: string = rgbToHex(i, j, k);
-	    const colorBox: HTMLDivElement = document.createElement('div');
-			const lcg: HTMLElement | HTMLSpanElement = document.getElementById("lcg")!;
-			const ncg: HTMLElement | HTMLSpanElement = document.getElementById("ncg")!;
-			const ncl: HTMLElement | HTMLSpanElement = document.getElementById("ncl")!;
-			const tl: HTMLElement | HTMLSpanElement = document.getElementById("tl")!;
-	    colorBox.className = 'color-box';
-	    colorBox.style.backgroundColor = hexColor;
-	    colorBox.innerText = hexColor;
-			colorBox.id = String(id);
-			lcg.innerText = hexColor;
-			ncg.innerText = String(id);
-			l = l - 1
-			ncl.innerText = String(l)
-	    colorBox.addEventListener('click', () => copyToClipboard(hexColor));
-	    colorContainer.appendChild(colorBox);
+		let i = 0, j = 0, k = 0, id = 0, l = 16581375;
+		let avgGenTime = 0;
+		let samples = 0;
+		const fragment = document.createDocumentFragment();
 
-	    k++;
-	    if (k > 255) {
-	      k = 0;
-	      j++;
-	    }
-	    if (j > 255) {
-	      j = 0;
-	      i++;
-	    }
-	    if (i <= 255) {
-	      setTimeout(generateColor, 0); // Adjust the delay as needed
-	    }
-			if (shouldScrollToBottom) {
-				window.scrollTo({
-        	top: document.body.scrollHeight,
-    		});
-				if (scrollonce) {
-					shouldScrollToBottom = false;
-					scrollonce = false;
-				}
+		function loop() {
+			const frameStart = performance.now();
+			let batchCount = 0;
+
+			while (i <= 255 && performance.now() - frameStart < 16) { // ~60fps budget
+				const hexColor = rgbToHex(i, j, k);
+				const colorBox = document.createElement('div');
+				colorBox.className = 'color-box';
+				colorBox.style.backgroundColor = hexColor;
+				colorBox.textContent = hexColor;
+				colorBox.id = String(++id);
+				colorBox.addEventListener('click', () => copyToClipboard(hexColor));
+				fragment.appendChild(colorBox);
+
+				if (++k > 255) { k = 0; if (++j > 255) { j = 0; i++; } }
+				l--;
+				batchCount++;
 			}
-			// Calculate the difference in time
-			let timeDifference = currentTime - prevTime;
 
-			// Multiply the time difference by l
-			let totalSeconds = timeDifference * l;
+			if (batchCount > 0) colorContainer.appendChild(fragment);
 
-			// Calculate days, hours, minutes, and seconds
-			let days = Math.floor(totalSeconds / (24 * 3600));
-			let hours = Math.floor((totalSeconds % (24 * 3600)) / 3600);
-			let minutes = Math.floor((totalSeconds % 3600) / 60);
-			let seconds = totalSeconds % 60;
+			if (shouldScrollToBottom) {
+				window.scrollTo({ top: document.body.scrollHeight });
+				if (scrollOnce) { shouldScrollToBottom = false; scrollOnce = false; }
+			}
 
-			// Format the result as DD:HH:MM:SS
-			let formattedTime = `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0').split('.')[0]}`;
-			tl.innerText = formattedTime;
+			const currentTime = performance.now() / 1000;
+			const frameTime = currentTime - prevTime;
+			avgGenTime = (avgGenTime * samples + frameTime) / (samples + 1);
+			samples++;
+
+			const colorsLeft = l;
+			const estSecondsRemaining = colorsLeft * avgGenTime * 0.5; // slightly dampened for better estimate
+			if (tl) tl.textContent = formatTime(estSecondsRemaining);
+
+			if (lcg) lcg.textContent = rgbToHex(i, j, k);
+			if (ncg) ncg.textContent = String(id);
+			if (ncl) ncl.textContent = String(l);
+
 			prevTime = currentTime;
-	  }
 
-	  generateColor();
+			if (i <= 255) requestAnimationFrame(loop);
+		}
+
+		loop();
 	}
-
-	function rgbToHex(r: number, g: number, b: number): string {
-	  const toHex = (c: number): string => {
-	    const hex: string = c.toString(16);
-	    return hex.length === 1 ? '0' + hex : hex;
-	  };
-	  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-	}
-
-	async function copyToClipboard(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    console.log('Text copied to clipboard');
-  } catch (err) {
-    console.error('Unable to copy text to clipboard', err);
-  }
-}
 
 	generateColors();
 </script>
