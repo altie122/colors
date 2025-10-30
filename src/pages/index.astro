@@ -8,8 +8,6 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-	let prevTime = Date.now() / 1000;
-	let currentTime = 0;
 	let shouldScrollToBottom = false;
 	let scrollonce = false;
 
@@ -19,17 +17,13 @@ import Layout from '../layouts/Layout.astro';
 	});
 
 	function rgbToHex(r, g, b) {
-		const toHex = (c) => {
-			const hex = c.toString(16);
-			return hex.length === 1 ? '0' + hex : hex;
-		};
+		const toHex = (c) => c.toString(16).padStart(2, '0');
 		return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 	}
 
 	async function copyToClipboard(text) {
 		try {
 			await navigator.clipboard.writeText(text);
-			console.log('Text copied to clipboard');
 		} catch (err) {
 			console.error('Unable to copy text to clipboard', err);
 		}
@@ -48,31 +42,23 @@ import Layout from '../layouts/Layout.astro';
 		let i = 0, j = 0, k = 0, id = 0, l = 16581375;
 		let avgRate = 0;
 		const smoothing = 0.2;
+		const batchSize = 100; // Reduced from 500 to reduce lag
+		let frameCount = 0; // For averaging time estimates
+		let totalElapsed = 0;
 
 		function loop() {
 			const start = performance.now();
 			const fragment = document.createDocumentFragment();
 
-			for (let n = 0; n < 500 && i <= 255; n++) {
+			for (let n = 0; n < batchSize && i <= 255; n++) {
 				const hexColor = rgbToHex(i, j, k);
 				const colorBox = document.createElement('div');
-				const lcg = document.getElementById('lcg');
-				const ncg = document.getElementById('ncg');
-				const ncl = document.getElementById('ncl');
-				const tl = document.getElementById('tl');
-
-				id++;
 				colorBox.className = 'color-box';
 				colorBox.style.backgroundColor = hexColor;
 				colorBox.innerText = hexColor;
-				colorBox.id = String(id);
+				colorBox.id = String(++id);
 				colorBox.addEventListener('click', () => copyToClipboard(hexColor));
 				fragment.appendChild(colorBox);
-
-				if (lcg) lcg.innerText = hexColor;
-				if (ncg) ncg.innerText = String(id);
-				l--;
-				if (ncl) ncl.innerText = String(l);
 
 				k++;
 				if (k > 255) { k = 0; j++; }
@@ -90,13 +76,14 @@ import Layout from '../layouts/Layout.astro';
 			}
 
 			const elapsed = (performance.now() - start) / 1000;
-			const processed = 500;
-			const rate = processed / elapsed;
-			avgRate = avgRate ? avgRate * (1 - smoothing) + rate * smoothing : rate;
+			totalElapsed += elapsed;
+			frameCount++;
+			avgRate = (batchSize * frameCount) / totalElapsed;
 
-			const remaining = l / avgRate;
-			if (document.getElementById('tl')) {
-				document.getElementById('tl').innerText = formatTime(remaining);
+			if (frameCount % 10 === 0) { // Update every 10 frames to save CPU
+				const remaining = l / avgRate;
+				const tl = document.getElementById('tl');
+				if (tl) tl.innerText = formatTime(remaining);
 			}
 
 			if (i <= 255) requestAnimationFrame(loop);
