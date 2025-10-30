@@ -8,9 +8,9 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
+	let prevTime = Date.now() / 1000;
 	let shouldScrollToBottom = false;
 	let scrollonce = false;
-
 	document.getElementById('skiptobutton')?.addEventListener('click', () => {
 		shouldScrollToBottom = true;
 		scrollonce = true;
@@ -24,6 +24,7 @@ import Layout from '../layouts/Layout.astro';
 	async function copyToClipboard(text) {
 		try {
 			await navigator.clipboard.writeText(text);
+			console.log('Text copied to clipboard');
 		} catch (err) {
 			console.error('Unable to copy text to clipboard', err);
 		}
@@ -34,7 +35,7 @@ import Layout from '../layouts/Layout.astro';
 		const hours = Math.floor((seconds % (24 * 3600)) / 3600);
 		const minutes = Math.floor((seconds % 3600) / 60);
 		const secs = Math.floor(seconds % 60);
-		return `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+		return `${String(days).padStart(2,'0')}:${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
 	}
 
 	function generateColors() {
@@ -42,23 +43,32 @@ import Layout from '../layouts/Layout.astro';
 		let i = 0, j = 0, k = 0, id = 0, l = 16581375;
 		let avgRate = 0;
 		const smoothing = 0.2;
-		const batchSize = 100; // Reduced from 500 to reduce lag
-		let frameCount = 0; // For averaging time estimates
-		let totalElapsed = 0;
+		let frameCount = 0;
 
 		function loop() {
 			const start = performance.now();
 			const fragment = document.createDocumentFragment();
 
-			for (let n = 0; n < batchSize && i <= 255; n++) {
+			for (let n = 0; n < 500 && i <= 255; n++) {
 				const hexColor = rgbToHex(i, j, k);
 				const colorBox = document.createElement('div');
+				const lcg = document.getElementById('lcg');
+				const ncg = document.getElementById('ncg');
+				const ncl = document.getElementById('ncl');
+				const tl = document.getElementById('tl');
+
+				id++;
 				colorBox.className = 'color-box';
 				colorBox.style.backgroundColor = hexColor;
 				colorBox.innerText = hexColor;
-				colorBox.id = String(++id);
+				colorBox.id = String(id);
 				colorBox.addEventListener('click', () => copyToClipboard(hexColor));
 				fragment.appendChild(colorBox);
+
+				if (lcg) lcg.innerText = hexColor;
+				if (ncg) ncg.innerText = String(id);
+				l--;
+				if (ncl) ncl.innerText = String(l);
 
 				k++;
 				if (k > 255) { k = 0; j++; }
@@ -69,21 +79,19 @@ import Layout from '../layouts/Layout.astro';
 
 			if (shouldScrollToBottom) {
 				window.scrollTo({ top: document.body.scrollHeight });
-				if (scrollonce) {
-					shouldScrollToBottom = false;
-					scrollonce = false;
-				}
+				if (scrollonce) { shouldScrollToBottom = false; scrollonce = false; }
 			}
 
-			const elapsed = (performance.now() - start) / 1000;
-			totalElapsed += elapsed;
 			frameCount++;
-			avgRate = (batchSize * frameCount) / totalElapsed;
+			if (frameCount % 30 === 0) {
+				const elapsed = (performance.now() - start) / 1000;
+				const processed = 500 * 30;
+				const rate = processed / elapsed;
+				avgRate = avgRate ? avgRate * (1 - smoothing) + rate * smoothing : rate;
+			}
 
-			if (frameCount % 10 === 0) { // Update every 10 frames to save CPU
-				const remaining = l / avgRate;
-				const tl = document.getElementById('tl');
-				if (tl) tl.innerText = formatTime(remaining);
+			if (document.getElementById('tl')) {
+				document.getElementById('tl').innerText = formatTime(l / (avgRate || 1));
 			}
 
 			if (i <= 255) requestAnimationFrame(loop);
