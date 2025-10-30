@@ -8,97 +8,102 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-	let prevTime = Date.now() / 1000;
-	let shouldScrollToBottom = false;
-	let scrollonce = false;
-	document.getElementById('skiptobutton')?.addEventListener('click', () => {
-		shouldScrollToBottom = true;
-		scrollonce = true;
-	});
+let prevTime = Date.now() / 1000;
+let shouldScrollToBottom = false;
+let scrollonce = false;
 
-	function rgbToHex(r, g, b) {
-		const toHex = (c) => c.toString(16).padStart(2, '0');
-		return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+document.getElementById('skiptobutton')?.addEventListener('click', () => {
+	shouldScrollToBottom = true;
+	scrollonce = true;
+});
+
+function rgbToHex(r, g, b) {
+	const toHex = (c) => {
+		const hex = c.toString(16);
+		return hex.length === 1 ? '0' + hex : hex;
+	};
+	return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+async function copyToClipboard(text) {
+	try {
+		await navigator.clipboard.writeText(text);
+		console.log('Text copied to clipboard');
+	} catch (err) {
+		console.error('Unable to copy text to clipboard', err);
 	}
+}
 
-	async function copyToClipboard(text) {
-		try {
-			await navigator.clipboard.writeText(text);
-			console.log('Text copied to clipboard');
-		} catch (err) {
-			console.error('Unable to copy text to clipboard', err);
-		}
-	}
+function formatTime(seconds) {
+	const days = Math.floor(seconds / (24 * 3600));
+	const hours = Math.floor((seconds % (24 * 3600)) / 3600);
+	const minutes = Math.floor((seconds % 3600) / 60);
+	const secs = Math.floor(seconds % 60);
+	return `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
 
-	function formatTime(seconds) {
-		const days = Math.floor(seconds / (24 * 3600));
-		const hours = Math.floor((seconds % (24 * 3600)) / 3600);
-		const minutes = Math.floor((seconds % 3600) / 60);
-		const secs = Math.floor(seconds % 60);
-		return `${String(days).padStart(2,'0')}:${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
-	}
+function generateColors() {
+	const colorContainer = document.body;
+	let i = 0, j = 0, k = 0, id = 0, l = 16581375;
+	const frameBatch = 500;
+	const rateHistory: number[] = [];
+	const smoothingFrames = 30;
 
-	function generateColors() {
-		const colorContainer = document.body;
-		let i = 0, j = 0, k = 0, id = 0, l = 16581375;
-		let avgRate = 0;
-		const smoothing = 0.2;
-		let frameCount = 0;
+	function loop() {
+		const start = performance.now();
+		const fragment = document.createDocumentFragment();
 
-		function loop() {
-			const start = performance.now();
-			const fragment = document.createDocumentFragment();
+		for (let n = 0; n < frameBatch && i <= 255; n++) {
+			const hexColor = rgbToHex(i, j, k);
+			const colorBox = document.createElement('div');
+			const lcg = document.getElementById('lcg');
+			const ncg = document.getElementById('ncg');
+			const ncl = document.getElementById('ncl');
+			const tl = document.getElementById('tl');
 
-			for (let n = 0; n < 500 && i <= 255; n++) {
-				const hexColor = rgbToHex(i, j, k);
-				const colorBox = document.createElement('div');
-				const lcg = document.getElementById('lcg');
-				const ncg = document.getElementById('ncg');
-				const ncl = document.getElementById('ncl');
-				const tl = document.getElementById('tl');
+			id++;
+			colorBox.className = 'color-box';
+			colorBox.style.backgroundColor = hexColor;
+			colorBox.innerText = hexColor;
+			colorBox.id = String(id);
+			colorBox.addEventListener('click', () => copyToClipboard(hexColor));
+			fragment.appendChild(colorBox);
 
-				id++;
-				colorBox.className = 'color-box';
-				colorBox.style.backgroundColor = hexColor;
-				colorBox.innerText = hexColor;
-				colorBox.id = String(id);
-				colorBox.addEventListener('click', () => copyToClipboard(hexColor));
-				fragment.appendChild(colorBox);
+			if (lcg) lcg.innerText = hexColor;
+			if (ncg) ncg.innerText = String(id);
+			l--;
+			if (ncl) ncl.innerText = String(l);
 
-				if (lcg) lcg.innerText = hexColor;
-				if (ncg) ncg.innerText = String(id);
-				l--;
-				if (ncl) ncl.innerText = String(l);
-
-				k++;
-				if (k > 255) { k = 0; j++; }
-				if (j > 255) { j = 0; i++; }
-			}
-
-			colorContainer.appendChild(fragment);
-
-			if (shouldScrollToBottom) {
-				window.scrollTo({ top: document.body.scrollHeight });
-				if (scrollonce) { shouldScrollToBottom = false; scrollonce = false; }
-			}
-
-			frameCount++;
-			if (frameCount % 30 === 0) {
-				const elapsed = (performance.now() - start) / 1000;
-				const processed = 500 * 30;
-				const rate = processed / elapsed;
-				avgRate = avgRate ? avgRate * (1 - smoothing) + rate * smoothing : rate;
-			}
-
-			if (document.getElementById('tl')) {
-				document.getElementById('tl').innerText = formatTime(l / (avgRate || 1));
-			}
-
-			if (i <= 255) requestAnimationFrame(loop);
+			k++;
+			if (k > 255) { k = 0; j++; }
+			if (j > 255) { j = 0; i++; }
 		}
 
-		loop();
+		colorContainer.appendChild(fragment);
+
+		if (shouldScrollToBottom) {
+			window.scrollTo({ top: document.body.scrollHeight });
+			if (scrollonce) {
+				shouldScrollToBottom = false;
+				scrollonce = false;
+			}
+		}
+
+		const elapsed = (performance.now() - start) / 1000;
+		const rate = frameBatch / elapsed;
+		rateHistory.push(rate);
+		if (rateHistory.length > smoothingFrames) rateHistory.shift();
+
+		const avgRate = rateHistory.reduce((a, b) => a + b, 0) / rateHistory.length;
+		const remaining = l / avgRate;
+		const tl = document.getElementById('tl');
+		if (tl) tl.innerText = formatTime(remaining);
+
+		if (i <= 255) requestAnimationFrame(loop);
 	}
 
-	generateColors();
+	loop();
+}
+
+generateColors();
 </script>
