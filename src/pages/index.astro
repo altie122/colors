@@ -4,130 +4,60 @@ import Layout from '../layouts/Layout.astro';
 
 <Layout title="Welcome to Astro.">
 	<main>
-		<div id="color-grid" class="color-grid"></div>
+		<div id="color-container"></div>
 	</main>
 </Layout>
 
 <script>
-// Configuration
-const ITEM_SIZE = 24; // Width & height of each color box
-const TOTAL_COLORS = 16777216; // 256^3
-const COLUMNS = Math.floor(window.innerWidth / ITEM_SIZE);
-const ROWS = Math.ceil(TOTAL_COLORS / COLUMNS);
+// Pre-compute hex lookup for 0-255 (faster than function calls)
+const HEX = Array.from({ length: 256 }, (_, i) =>
+	i.toString(16).padStart(2, '0').toUpperCase()
+);
 
-// Pre-compute hex lookup for 0-255
-const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0').toUpperCase());
-
-// State
-let scrollRow = 0;
-let isScrolling = false;
-let scrollTimeout: number;
-
-// DOM refs
-const grid = document.getElementById('color-grid') as HTMLElement;
+// Cache DOM elements once
+const container = document.getElementById('color-container')!;
 const lcg = document.getElementById('lcg');
 const ncg = document.getElementById('ncg');
 const ncl = document.getElementById('ncl');
 const tlEl = document.getElementById('tl');
 
-// Calculate color from index (optimized)
+// State
+const TOTAL_COLORS = 16777216;
+const BATCH_SIZE = 300;
+const VISIBLE_THRESHOLD = 1000; // Max visible elements before virtualizing
+
+let generatedCount = 0;
+let isComplete = false;
+let scrollTarget: number | null = null;
+
+// Stats tracking
+const rateHistory: number[] = [];
+const smoothingFrames = 30;
+
+// Fast index to hex conversion
 function indexToHex(index: number): string {
-	const r = Math.floor(index / 65536) % 256;
-	const g = Math.floor(index / 256) % 256;
-	const b = index % 256;
-	return `#${HEX[r]}${HEX[g]}${HEX[b]}`;
+	return `#${HEX[(index >> 16) & 255]}${HEX[(index >> 8) & 255]}${HEX[index & 255]}`;
 }
 
-// Setup virtualized grid
-function initVirtualGrid(): void {
-	const viewportHeight = window.innerHeight;
-	const visibleRows = Math.ceil(viewportHeight / ITEM_SIZE) + 4; // Buffer
-
-	// Set total scroll height
-	grid.style.height = `${ROWS * ITEM_SIZE}px`;
-
-	// Create visible elements pool (reusable)
-	const fragment = document.createDocumentFragment();
-	const pool: HTMLDivElement[] = [];
-
-	for (let i = 0; i < visibleRows * COLUMNS; i++) {
-		const box = document.createElement('div');
-		box.className = 'color-box';
-		box.style.cssText = `width:${ITEM_SIZE}px;height:${ITEM_SIZE}px;position:absolute;`;
-		fragment.appendChild(box);
-		pool.push(box);
-	}
-	grid.appendChild(fragment);
-
-	// Event delegation for clicks
-	grid.addEventListener('click', (e) => {
-		const target = e.target as HTMLElement;
-		if (target.classList.contains('color-box')) {
-			const hex = target.dataset.hex;
-			if (hex) {
-				navigator.clipboard.writeText(hex).catch(console.error);
-			}
+// Event delegation - single click handler for all color boxes
+container.addEventListener('click', (e) => {
+	const target = e.target as HTMLElement;
+	if (target.classList.contains('color-box')) {
+		const hex = target.dataset.hex;
+		if (hex) {
+			navigator.clipboard.writeText(hex).catch(console.error);
+			// Visual feedback
+			target.style.outline = '2px solid white';
+			setTimeout(() => (target.style.outline = ''), 200);
 		}
-	});
-
-	// Render function - updates existing nodes
-	function render(): void {
-		const startRow = Math.max(0, scrollRow - 2);
-		const endRow = Math.min(ROWS, startRow + visibleRows);
-
-		let poolIndex = 0;
-		for (let row = startRow; row < endRow; row++) {
-			for (let col = 0; col < COLUMNS; col++) {
-				const index = row * COLUMNS + col;
-				if (index >= TOTAL_COLORS) break;
-
-				const box = pool[poolIndex++];
-				const hex = indexToHex(index);
-
-				box.style.transform = `translate(${col * ITEM_SIZE}px, ${row * ITEM_SIZE}px)`;
-				box.style.backgroundColor = hex;
-				box.textContent = '';
-				box.dataset.hex = hex;
-			}
-		}
-
-		// Update stats
-		const currentIndex = scrollRow * COLUMNS;
-		if (lcg) lcg.textContent = indexToHex(currentIndex);
-		if (ncg) ncg.textContent = String(currentIndex);
-		if (ncl) ncl.textContent = String(TOTAL_COLORS - currentIndex);
 	}
+});
 
-	// Scroll handler
-	function onScroll(): void {
-		scrollRow = Math.floor(window.scrollY / ITEM_SIZE);
-
-		// Throttle rendering
-		if (!isScrolling) {
-			isScrolling = true;
-			requestAnimationFrame(() => {
-				render();
-				isScrolling = false;
-			});
-		}
-
-		// Update ETA less frequently
-		clearTimeout(scrollTimeout);
-		scrollTimeout = setTimeout(() => {
-			const remaining = TOTAL_COLORS - scrollRow * COLUMNS;
-			const rate = 50000; // Approximate scroll rate
-			if (tlEl) tlEl.textContent = formatTime(remaining / rate);
-		}, 100);
-	}
-
-	// Skip to bottom button
-	document.getElementById('skiptobutton')?.addEventListener('click', () => {
-		window.scrollTo({ top: document.body.scrollHeight });
-	});
-
-	window.addEventListener('scroll', onScroll, { passive: true });
-	render();
-}
+// Skip to bottom handler
+document.getElementById('skiptobutton')?.addEventListener('click', () => {
+	scrollTarget = document.body.scrollHeight;
+	window.scrollTo({ top: scrollTarget });
+});
 
 function formatTime(seconds: number): string {
 	const days = Math.floor(seconds / 86400);
@@ -137,27 +67,109 @@ function formatTime(seconds: number): string {
 	return `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
-initVirtualGrid();
+// Virtualize old elements when too many exist
+function cleanupOldElements(): void {
+	const boxes = container.querySelectorAll('.color-box');
+	if (boxes.length > VISIBLE_THRESHOLD) {
+		// Remove oldest elements (keep most recent)
+		const removeCount = boxes.length - VISIBLE_THRESHOLD + 200;
+		for (let i = 0; i < removeCount; i++) {
+			boxes[i].remove();
+		}
+	}
+}
+
+function generateColors(): void {
+	const start = performance.now();
+	const fragment = document.createDocumentFragment();
+
+	for (let n = 0; n < BATCH_SIZE && generatedCount < TOTAL_COLORS; n++) {
+		const hex = indexToHex(generatedCount);
+		const colorBox = document.createElement('div');
+
+		colorBox.className = 'color-box';
+		colorBox.style.backgroundColor = hex;
+		colorBox.textContent = hex;
+		colorBox.dataset.hex = hex;
+
+		fragment.appendChild(colorBox);
+		generatedCount++;
+	}
+
+	container.appendChild(fragment);
+
+	// Update stats
+	const lastHex = indexToHex(generatedCount - 1);
+	if (lcg) lcg.textContent = lastHex;
+	if (ncg) ncg.textContent = String(generatedCount);
+	if (ncl) ncl.textContent = String(TOTAL_COLORS - generatedCount);
+
+	// Handle smooth scrolling
+	if (scrollTarget !== null) {
+		const currentScroll = window.scrollY;
+		const maxScroll = document.body.scrollHeight - window.innerHeight;
+
+		if (currentScroll >= maxScroll - 10 || isComplete) {
+			scrollTarget = null;
+		} else if (generatedCount < TOTAL_COLORS) {
+			// Keep scrolling as new content is added
+			requestAnimationFrame(() => {
+				window.scrollTo({ top: document.body.scrollHeight });
+			});
+		}
+	}
+
+	// Calculate ETA
+	const elapsed = (performance.now() - start) / 1000;
+	const rate = BATCH_SIZE / elapsed;
+	rateHistory.push(rate);
+	if (rateHistory.length > smoothingFrames) rateHistory.shift();
+
+	const avgRate = rateHistory.reduce((a, b) => a + b, 0) / rateHistory.length;
+	const remaining = (TOTAL_COLORS - generatedCount) / avgRate;
+	if (tlEl) tlEl.textContent = formatTime(remaining);
+
+	// Cleanup old elements periodically to prevent slowdown
+	if (generatedCount % 10000 === 0) {
+		cleanupOldElements();
+	}
+
+	// Continue generation
+	if (generatedCount < TOTAL_COLORS) {
+		requestAnimationFrame(generateColors);
+	} else {
+		isComplete = true;
+		if (tlEl) tlEl.textContent = '00:00:00:00';
+	}
+}
+
+generateColors();
 </script>
 
 <style>
-	.color-grid {
-		position: relative;
-		width: 100%;
+	#color-container {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+		gap: 4px;
+		padding: 8px;
 	}
 
 	.color-box {
-		box-sizing: border-box;
-		font-size: 8px;
+		aspect-ratio: 1;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		font-family: monospace;
+		font-size: 10px;
 		cursor: pointer;
-		transition: transform 0s;
+		border-radius: 4px;
+		transition: outline 0.15s ease;
+		user-select: none;
+		text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
 	}
 
 	.color-box:hover {
 		outline: 2px solid white;
-		z-index: 1;
+		transform: scale(1.05);
 	}
 </style>
