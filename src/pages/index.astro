@@ -4,17 +4,130 @@ import Layout from '../layouts/Layout.astro';
 
 <Layout title="Welcome to Astro.">
 	<main>
+		<div id="color-grid" class="color-grid"></div>
 	</main>
 </Layout>
 
 <script>
-let shouldScrollToBottom = false;
-let scrollOnce = false;
+// Configuration
+const ITEM_SIZE = 24; // Width & height of each color box
+const TOTAL_COLORS = 16777216; // 256^3
+const COLUMNS = Math.floor(window.innerWidth / ITEM_SIZE);
+const ROWS = Math.ceil(TOTAL_COLORS / COLUMNS);
 
-document.getElementById('skiptobutton')?.addEventListener('click', () => {
-	shouldScrollToBottom = true;
-	scrollOnce = true;
-});
+// Pre-compute hex lookup for 0-255
+const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0').toUpperCase());
+
+// State
+let scrollRow = 0;
+let isScrolling = false;
+let scrollTimeout: number;
+
+// DOM refs
+const grid = document.getElementById('color-grid') as HTMLElement;
+const lcg = document.getElementById('lcg');
+const ncg = document.getElementById('ncg');
+const ncl = document.getElementById('ncl');
+const tlEl = document.getElementById('tl');
+
+// Calculate color from index (optimized)
+function indexToHex(index: number): string {
+	const r = Math.floor(index / 65536) % 256;
+	const g = Math.floor(index / 256) % 256;
+	const b = index % 256;
+	return `#${HEX[r]}${HEX[g]}${HEX[b]}`;
+}
+
+// Setup virtualized grid
+function initVirtualGrid(): void {
+	const viewportHeight = window.innerHeight;
+	const visibleRows = Math.ceil(viewportHeight / ITEM_SIZE) + 4; // Buffer
+
+	// Set total scroll height
+	grid.style.height = `${ROWS * ITEM_SIZE}px`;
+
+	// Create visible elements pool (reusable)
+	const fragment = document.createDocumentFragment();
+	const pool: HTMLDivElement[] = [];
+
+	for (let i = 0; i < visibleRows * COLUMNS; i++) {
+		const box = document.createElement('div');
+		box.className = 'color-box';
+		box.style.cssText = `width:${ITEM_SIZE}px;height:${ITEM_SIZE}px;position:absolute;`;
+		fragment.appendChild(box);
+		pool.push(box);
+	}
+	grid.appendChild(fragment);
+
+	// Event delegation for clicks
+	grid.addEventListener('click', (e) => {
+		const target = e.target as HTMLElement;
+		if (target.classList.contains('color-box')) {
+			const hex = target.dataset.hex;
+			if (hex) {
+				navigator.clipboard.writeText(hex).catch(console.error);
+			}
+		}
+	});
+
+	// Render function - updates existing nodes
+	function render(): void {
+		const startRow = Math.max(0, scrollRow - 2);
+		const endRow = Math.min(ROWS, startRow + visibleRows);
+
+		let poolIndex = 0;
+		for (let row = startRow; row < endRow; row++) {
+			for (let col = 0; col < COLUMNS; col++) {
+				const index = row * COLUMNS + col;
+				if (index >= TOTAL_COLORS) break;
+
+				const box = pool[poolIndex++];
+				const hex = indexToHex(index);
+
+				box.style.transform = `translate(${col * ITEM_SIZE}px, ${row * ITEM_SIZE}px)`;
+				box.style.backgroundColor = hex;
+				box.textContent = '';
+				box.dataset.hex = hex;
+			}
+		}
+
+		// Update stats
+		const currentIndex = scrollRow * COLUMNS;
+		if (lcg) lcg.textContent = indexToHex(currentIndex);
+		if (ncg) ncg.textContent = String(currentIndex);
+		if (ncl) ncl.textContent = String(TOTAL_COLORS - currentIndex);
+	}
+
+	// Scroll handler
+	function onScroll(): void {
+		scrollRow = Math.floor(window.scrollY / ITEM_SIZE);
+
+		// Throttle rendering
+		if (!isScrolling) {
+			isScrolling = true;
+			requestAnimationFrame(() => {
+				render();
+				isScrolling = false;
+			});
+		}
+
+		// Update ETA less frequently
+		clearTimeout(scrollTimeout);
+		scrollTimeout = setTimeout(() => {
+			const remaining = TOTAL_COLORS - scrollRow * COLUMNS;
+			const rate = 50000; // Approximate scroll rate
+			if (tlEl) tlEl.textContent = formatTime(remaining / rate);
+		}, 100);
+	}
+
+	// Skip to bottom button
+	document.getElementById('skiptobutton')?.addEventListener('click', () => {
+		window.scrollTo({ top: document.body.scrollHeight });
+	});
+
+	window.addEventListener('scroll', onScroll, { passive: true });
+	render();
+}
 
 function formatTime(seconds: number): string {
 	const days = Math.floor(seconds / 86400);
@@ -24,112 +137,27 @@ function formatTime(seconds: number): string {
 	return `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
-// Pre-compute hex values for 0-255 (avoids repeated string operations)
-const HEX_LOOKUP = Array.from({ length: 256 }, (_, i) =>
-	i.toString(16).padStart(2, '0')
-);
+initVirtualGrid();
+</script>
 
-function generateColors(): void {
-	const colorContainer = document.body;
-	const frameBatch = 500;
-
-	// Cache DOM references - querying inside the loop is expensive
-	const lcg = document.getElementById('lcg');
-	const ncg = document.getElementById('ncg');
-	const ncl = document.getElementById('ncl');
-	const tlEl = document.getElementById('tl');
-
-	// Event delegation: one listener instead of 16M+ individual listeners
-	colorContainer.addEventListener('click', (e) => {
-		const target = e.target as HTMLElement;
-		if (target.classList.contains('color-box')) {
-			const hexColor = target.style.backgroundColor;
-			// Convert rgb back to hex for clipboard
-			const match = hexColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-			if (match) {
-				const hex = `#${HEX_LOOKUP[parseInt(match[1])]}${HEX_LOOKUP[parseInt(match[2])]}${HEX_LOOKUP[parseInt(match[3])]}`
-					.toUpperCase();
-				navigator.clipboard.writeText(hex).catch((err) =>
-					console.error('Unable to copy text to clipboard', err)
-				);
-			}
-		}
-	});
-
-	let i = 0;
-	let j = 0;
-	let k = 0;
-	let id = 0;
-	let remaining = 16581375; // 256^3 - 1
-
-	const rateHistory: number[] = [];
-	const smoothingFrames = 30;
-
-	function loop(): void {
-		const start = performance.now();
-		const fragment = document.createDocumentFragment();
-
-		for (let n = 0; n < frameBatch && i <= 255; n++) {
-			const hexColor = `#${HEX_LOOKUP[i]}${HEX_LOOKUP[j]}${HEX_LOOKUP[k]}`.toUpperCase();
-			const colorBox = document.createElement('div');
-
-			id++;
-			remaining--;
-			colorBox.className = 'color-box';
-			colorBox.style.backgroundColor = hexColor;
-			colorBox.textContent = hexColor;
-			fragment.appendChild(colorBox);
-
-			// Increment color values using modulo arithmetic
-			k++;
-			if (k > 255) {
-				k = 0;
-				j++;
-				if (j > 255) {
-					j = 0;
-					i++;
-				}
-			}
-		}
-
-		// Batch DOM updates - append fragment once
-		colorContainer.appendChild(fragment);
-
-		// Update stats (cached elements)
-		if (lcg) {
-			const hexColor = `#${HEX_LOOKUP[i]}${HEX_LOOKUP[j]}${HEX_LOOKUP[k]}`.toUpperCase();
-			lcg.textContent = hexColor;
-		}
-		if (ncg) ncg.textContent = String(id);
-		if (ncl) ncl.textContent = String(remaining);
-
-		// Handle scroll requests
-		if (shouldScrollToBottom) {
-			window.scrollTo({ top: document.body.scrollHeight });
-			if (scrollOnce) {
-				shouldScrollToBottom = false;
-				scrollOnce = false;
-			}
-		}
-
-		// Calculate and display ETA
-		const elapsed = (performance.now() - start) / 1000;
-		const rate = frameBatch / elapsed;
-		rateHistory.push(rate);
-		if (rateHistory.length > smoothingFrames) rateHistory.shift();
-
-		const avgRate =
-			rateHistory.reduce((a, b) => a + b, 0) / rateHistory.length;
-		const timeRemaining = remaining / avgRate;
-		if (tlEl) tlEl.textContent = formatTime(timeRemaining);
-
-		if (i <= 255) {
-			requestAnimationFrame(loop);
-		}
+<style>
+	.color-grid {
+		position: relative;
+		width: 100%;
 	}
 
-	loop();
-}
+	.color-box {
+		box-sizing: border-box;
+		font-size: 8px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: transform 0s;
+	}
 
-generateColors();
-</script>
+	.color-box:hover {
+		outline: 2px solid white;
+		z-index: 1;
+	}
+</style>
