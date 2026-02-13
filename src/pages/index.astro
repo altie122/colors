@@ -8,98 +8,124 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-let prevTime = Date.now() / 1000;
 let shouldScrollToBottom = false;
-let scrollonce = false;
+let scrollOnce = false;
 
 document.getElementById('skiptobutton')?.addEventListener('click', () => {
 	shouldScrollToBottom = true;
-	scrollonce = true;
+	scrollOnce = true;
 });
 
-function rgbToHex(r, g, b) {
-	const toHex = (c) => {
-		const hex = c.toString(16);
-		return hex.length === 1 ? '0' + hex : hex;
-	};
-	return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-async function copyToClipboard(text) {
-	try {
-		await navigator.clipboard.writeText(text);
-		console.log('Text copied to clipboard');
-	} catch (err) {
-		console.error('Unable to copy text to clipboard', err);
-	}
-}
-
-function formatTime(seconds) {
-	const days = Math.floor(seconds / (24 * 3600));
-	const hours = Math.floor((seconds % (24 * 3600)) / 3600);
+function formatTime(seconds: number): string {
+	const days = Math.floor(seconds / 86400);
+	const hours = Math.floor((seconds % 86400) / 3600);
 	const minutes = Math.floor((seconds % 3600) / 60);
 	const secs = Math.floor(seconds % 60);
 	return `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
-function generateColors() {
+// Pre-compute hex values for 0-255 (avoids repeated string operations)
+const HEX_LOOKUP = Array.from({ length: 256 }, (_, i) =>
+	i.toString(16).padStart(2, '0')
+);
+
+function generateColors(): void {
 	const colorContainer = document.body;
-	let i = 0, j = 0, k = 0, id = 0, l = 16581375;
 	const frameBatch = 500;
+
+	// Cache DOM references - querying inside the loop is expensive
+	const lcg = document.getElementById('lcg');
+	const ncg = document.getElementById('ncg');
+	const ncl = document.getElementById('ncl');
+	const tlEl = document.getElementById('tl');
+
+	// Event delegation: one listener instead of 16M+ individual listeners
+	colorContainer.addEventListener('click', (e) => {
+		const target = e.target as HTMLElement;
+		if (target.classList.contains('color-box')) {
+			const hexColor = target.style.backgroundColor;
+			// Convert rgb back to hex for clipboard
+			const match = hexColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+			if (match) {
+				const hex = `#${HEX_LOOKUP[parseInt(match[1])]}${HEX_LOOKUP[parseInt(match[2])]}${HEX_LOOKUP[parseInt(match[3])]}`
+					.toUpperCase();
+				navigator.clipboard.writeText(hex).catch((err) =>
+					console.error('Unable to copy text to clipboard', err)
+				);
+			}
+		}
+	});
+
+	let i = 0;
+	let j = 0;
+	let k = 0;
+	let id = 0;
+	let remaining = 16581375; // 256^3 - 1
+
 	const rateHistory: number[] = [];
 	const smoothingFrames = 30;
 
-	function loop() {
+	function loop(): void {
 		const start = performance.now();
 		const fragment = document.createDocumentFragment();
 
 		for (let n = 0; n < frameBatch && i <= 255; n++) {
-			const hexColor = rgbToHex(i, j, k);
+			const hexColor = `#${HEX_LOOKUP[i]}${HEX_LOOKUP[j]}${HEX_LOOKUP[k]}`.toUpperCase();
 			const colorBox = document.createElement('div');
-			const lcg = document.getElementById('lcg');
-			const ncg = document.getElementById('ncg');
-			const ncl = document.getElementById('ncl');
-			const tl = document.getElementById('tl');
 
 			id++;
+			remaining--;
 			colorBox.className = 'color-box';
 			colorBox.style.backgroundColor = hexColor;
-			colorBox.innerText = hexColor;
-			colorBox.id = String(id);
-			colorBox.addEventListener('click', () => copyToClipboard(hexColor));
+			colorBox.textContent = hexColor;
 			fragment.appendChild(colorBox);
 
-			if (lcg) lcg.innerText = hexColor;
-			if (ncg) ncg.innerText = String(id);
-			l--;
-			if (ncl) ncl.innerText = String(l);
-
+			// Increment color values using modulo arithmetic
 			k++;
-			if (k > 255) { k = 0; j++; }
-			if (j > 255) { j = 0; i++; }
-		}
-
-		colorContainer.appendChild(fragment);
-
-		if (shouldScrollToBottom) {
-			window.scrollTo({ top: document.body.scrollHeight });
-			if (scrollonce) {
-				shouldScrollToBottom = false;
-				scrollonce = false;
+			if (k > 255) {
+				k = 0;
+				j++;
+				if (j > 255) {
+					j = 0;
+					i++;
+				}
 			}
 		}
 
+		// Batch DOM updates - append fragment once
+		colorContainer.appendChild(fragment);
+
+		// Update stats (cached elements)
+		if (lcg) {
+			const hexColor = `#${HEX_LOOKUP[i]}${HEX_LOOKUP[j]}${HEX_LOOKUP[k]}`.toUpperCase();
+			lcg.textContent = hexColor;
+		}
+		if (ncg) ncg.textContent = String(id);
+		if (ncl) ncl.textContent = String(remaining);
+
+		// Handle scroll requests
+		if (shouldScrollToBottom) {
+			window.scrollTo({ top: document.body.scrollHeight });
+			if (scrollOnce) {
+				shouldScrollToBottom = false;
+				scrollOnce = false;
+			}
+		}
+
+		// Calculate and display ETA
 		const elapsed = (performance.now() - start) / 1000;
 		const rate = frameBatch / elapsed;
 		rateHistory.push(rate);
 		if (rateHistory.length > smoothingFrames) rateHistory.shift();
 
-		const avgRate = rateHistory.reduce((a, b) => a + b, 0) / rateHistory.length;
-		const remaining = l / avgRate;
-		const tl = document.getElementById('tl');
-		if (tl) tl.innerText = formatTime(remaining);
+		const avgRate =
+			rateHistory.reduce((a, b) => a + b, 0) / rateHistory.length;
+		const timeRemaining = remaining / avgRate;
+		if (tlEl) tlEl.textContent = formatTime(timeRemaining);
 
-		if (i <= 255) requestAnimationFrame(loop);
+		if (i <= 255) {
+			requestAnimationFrame(loop);
+		}
 	}
 
 	loop();
